@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 
-const ASSET = '/assetts/';
+const ASSET = `${import.meta.env.BASE_URL}assetts/`;
 const image = (name) => `${ASSET}${name}`;
 
 const products = [
@@ -207,7 +207,7 @@ function Header({ count, onCart, onSearch }) {
 function Home({ onAdd }) {
   return (
     <>
-      <section className="hero">
+      <section className="hero" style={{ '--hero-fallback': `url("${image('WhatsApp Image 2026-10-21 at 11.54.14 PM.jpeg')}")` }}>
         <video className="hero__video" autoPlay muted loop playsInline poster={image('WhatsApp Image 2026-10-21 at 11.54.14 PM.jpeg')}>
           <source src={image('WhatsApp Video 2026-10-21 at 11.50.12 PM.mp4')} type="video/mp4" />
         </video>

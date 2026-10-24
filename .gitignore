@@ -17,4 +17,4 @@ Thumbs.db
 .vscode/
 
 # Temporary asset-inspection previews
-assetts/video-*-preview.jpg
+public/assetts/video-*-preview.jpg
