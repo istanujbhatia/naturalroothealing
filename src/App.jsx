@@ -215,7 +215,7 @@ function Home({ onAdd }) {
         </div>
       </section>
       <section className="story-banner">
-        <img src={image('home-landscape.jpg')} alt="Sunlit landscape" />
+        <img src={image('philosophy-banner.png')} alt="Ayurvedic herbs in the hills" />
         <div className="story-banner__shade"></div>
         <div className="page-container story-banner__content">
           <p className="eyebrow eyebrow--light">Our philosophy</p>
