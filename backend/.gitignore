@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.vite/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temporary asset-inspection previews
+**/public/assets/*-preview.jpg
+
+# Backend environment files
+backend/.env
+backend/.env.*
+!backend/.env.example
+!backend/.env.test.example
+
+# Backend build output and logs
+backend/dist/
+backend/coverage/
+backend/*.log
+backend/npm-debug.log*
