@@ -18,6 +18,12 @@ const environmentSchema = z.object({
   COOKIE_SECURE: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
   COOKIE_SAME_SITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   COOKIE_DOMAIN: z.string().trim().optional(),
+  ASSET_UPLOAD_DIR: z.string().trim().min(1).default('../frontend/public/assets'),
+  RAZORPAY_KEY_ID: z.string().trim().optional(),
+  RAZORPAY_KEY_SECRET: z.string().trim().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().trim().optional(),
+  RAZORPAY_MODE: z.literal('test').default('test'),
+  PAYMENT_RESERVATION_TTL_MINUTES: z.coerce.number().int().min(5).max(1440).default(30),
 });
 
 export type AppConfig = {
@@ -37,6 +43,12 @@ export type AppConfig = {
   cookieSecure: boolean;
   cookieSameSite: 'lax' | 'strict' | 'none';
   cookieDomain?: string;
+  assetUploadDir?: string;
+  razorpayKeyId?: string;
+  razorpayKeySecret?: string;
+  razorpayWebhookSecret?: string;
+  razorpayMode: 'test';
+  paymentReservationTtlMinutes: number;
 };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -83,5 +95,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     cookieSecure: parsed.data.COOKIE_SECURE,
     cookieSameSite: parsed.data.COOKIE_SAME_SITE,
     ...(parsed.data.COOKIE_DOMAIN ? { cookieDomain: parsed.data.COOKIE_DOMAIN } : {}),
+    assetUploadDir: parsed.data.ASSET_UPLOAD_DIR,
+    ...(parsed.data.RAZORPAY_KEY_ID ? { razorpayKeyId: parsed.data.RAZORPAY_KEY_ID } : {}),
+    ...(parsed.data.RAZORPAY_KEY_SECRET ? { razorpayKeySecret: parsed.data.RAZORPAY_KEY_SECRET } : {}),
+    ...(parsed.data.RAZORPAY_WEBHOOK_SECRET ? { razorpayWebhookSecret: parsed.data.RAZORPAY_WEBHOOK_SECRET } : {}),
+    razorpayMode: parsed.data.RAZORPAY_MODE,
+    paymentReservationTtlMinutes: parsed.data.PAYMENT_RESERVATION_TTL_MINUTES,
   };
 }

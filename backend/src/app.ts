@@ -12,6 +12,17 @@ import { createAuthRouter } from './routes/auth.js';
 import { createAccountRouter } from './routes/account.js';
 import { createCartRouter } from './routes/cart.js';
 import { createOrdersRouter } from './routes/orders.js';
+import { createAdminRouter } from './routes/admin.js';
+import { catalogRouter } from './routes/catalog.js';
+import { createAdminCatalogRouter } from './routes/admin-catalog.js';
+import { createAdminOrdersRouter } from './routes/admin-orders.js';
+import { createAdminUsersRouter } from './routes/admin-users.js';
+import { createContactRouter } from './routes/contact.js';
+import { createAdminContactRouter } from './routes/admin-contact.js';
+import { createReviewsRouter } from './routes/reviews.js';
+import { createAdminReviewsRouter } from './routes/admin-reviews.js';
+import { createPaymentsRouter } from './routes/payments.js';
+import { createPaymentWebhooksRouter } from './routes/payment-webhooks.js';
 
 export function createApp(config: AppConfig) {
   const logger = createLogger(config.logLevel);
@@ -26,7 +37,8 @@ export function createApp(config: AppConfig) {
     origin: config.frontendOrigins.includes('*') ? true : config.frontendOrigins,
     credentials: true,
   }));
-  app.use(express.json({ limit: config.jsonBodyLimit }));
+  app.use('/api/v1/admin/catalog/assets', express.json({ limit: '8mb' }));
+  app.use(express.json({ limit: config.jsonBodyLimit, verify: (req, _res, buffer) => { (req as any).rawBody = Buffer.from(buffer); } }));
   app.use(express.urlencoded({ extended: false, limit: config.jsonBodyLimit }));
   app.use(rateLimit({
     windowMs: config.rateLimitWindowMs,
@@ -48,6 +60,17 @@ export function createApp(config: AppConfig) {
   app.use('/api/v1/account', createAccountRouter(config));
   app.use('/api/v1/cart', createCartRouter(config));
   app.use('/api/v1/orders', createOrdersRouter(config));
+  app.use('/api/v1/payments', createPaymentsRouter(config));
+  app.use('/api/v1/webhooks', createPaymentWebhooksRouter(config));
+  app.use('/api/v1/contact', createContactRouter(config));
+  app.use('/api/v1/admin', createAdminRouter(config));
+  app.use('/api/v1/admin/catalog', createAdminCatalogRouter(config));
+  app.use('/api/v1/admin/orders', createAdminOrdersRouter(config));
+  app.use('/api/v1/admin/users', createAdminUsersRouter(config));
+  app.use('/api/v1/admin/contact', createAdminContactRouter(config));
+  app.use('/api/v1/catalog/products', createReviewsRouter(config));
+  app.use('/api/v1/catalog', catalogRouter);
+  app.use('/api/v1/admin/reviews', createAdminReviewsRouter(config));
   app.use(notFoundHandler);
   app.use(errorHandler);
 

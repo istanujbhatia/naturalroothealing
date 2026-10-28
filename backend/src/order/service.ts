@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
-import { AppError } from '../errors.js';
 import { calculateFinalPriceMinor } from '../catalog/price.js';
+import { canonicalOrderStatus, defaultOrderStatus } from './status.js';
+import { AppError } from '../errors.js';
 
 type CartItem = { productId: { toString(): string }; quantity: number };
 export type Product = { _id: { toString(): string }; slug: string; name: string; currency: string; listPriceMinor: number; discount: { type: 'percentage'; value: number } };
@@ -13,6 +14,7 @@ export type OrderRepository = {
   findByUser(userId: string): Promise<OrderRecord[]>;
 };
 export type OrderCartRepository = { findOne(query: Record<string, unknown>): Promise<{ items: CartItem[] } | null>; deleteOne(query: Record<string, unknown>): Promise<unknown> };
+export type OrderInventoryRepository = { reserve(lines: CartItem[]): Promise<void>; release(lines: CartItem[]): Promise<void> };
 export type OrderProductRepository = { findByIds(ids: unknown[]): Promise<Product[]> };
 export type OrderAddressRepository = { findOne(query: Record<string, unknown>): Promise<Address | null> };
 export type StoreSettingsRepository = { findOne(query: Record<string, unknown>): Promise<{ catalogCurrency: string; shippingMinor?: number; taxRatePercentage?: number } | null> };
@@ -32,10 +34,10 @@ export function assertOrderStatusTransition(current: string, next: string): void
 
 export function toSafeOrder(order: OrderRecord) {
   const { userId: _userId, idempotencyKey: _idempotencyKey, ...safeOrder } = order;
-  return { ...safeOrder, id: String(order._id || '') };
+  return { ...safeOrder, order_status: canonicalOrderStatus(order), id: String(order._id || '') };
 }
 
-export async function createOrder(userId: string, addressId: string, idempotencyKey: string, orders: OrderRepository, carts: OrderCartRepository, products: OrderProductRepository, addresses: OrderAddressRepository, settings: StoreSettingsRepository): Promise<OrderRecord> {
+export async function createOrder(userId: string, addressId: string, idempotencyKey: string, orders: OrderRepository, carts: OrderCartRepository, products: OrderProductRepository, addresses: OrderAddressRepository, settings: StoreSettingsRepository, inventory?: OrderInventoryRepository, reservationTtlMinutes = 30): Promise<OrderRecord> {
   if (!Types.ObjectId.isValid(addressId)) throw new AppError(400, 'INVALID_ADDRESS_ID', 'Address identifier is invalid');
   const existing = await orders.findOne({ userId, idempotencyKey });
   if (existing) return existing;
@@ -59,10 +61,14 @@ export async function createOrder(userId: string, addressId: string, idempotency
     subtotalMinor += lineTotalMinor;
     return { productId: product._id, slug: product.slug, name: product.name, quantity: item.quantity, unitPriceMinor, lineTotalMinor };
   });
+  if (inventory) await inventory.reserve(cart.items);
   const shippingMinor = store.shippingMinor ?? 0;
   const taxMinor = Math.round(subtotalMinor * ((store.taxRatePercentage ?? 0) / 100));
   const totalMinor = subtotalMinor + shippingMinor + taxMinor;
-  const order = await orders.create({
+  const expiresAt = new Date(Date.now() + reservationTtlMinutes * 60 * 1000);
+  let order: OrderRecord;
+  try {
+    order = await orders.create({
     orderNumber: `NRH-${Date.now().toString(36).toUpperCase()}-${new Types.ObjectId().toString().slice(-6).toUpperCase()}`,
     userId,
     idempotencyKey,
@@ -83,19 +89,25 @@ export async function createOrder(userId: string, addressId: string, idempotency
       postalCode: address.postalCode,
       country: address.country,
     },
-    orderStatus: 'processing',
+    orderStatus: 'pending-payment',
     paymentStatus: 'pending',
     fulfillmentStatus: 'unfulfilled',
     payment: { status: 'awaiting_payment' },
     preparation: { status: 'pending' },
     delivery: { status: 'awaiting_handover' },
+    order_status: defaultOrderStatus(),
+    stockReservation: { status: 'reserved', reservedAt: new Date(), expiresAt },
     statusHistory: [
-      { phase: 'order', status: 'processing', changedAt: new Date(), changedBy: 'system' },
-      { phase: 'payment', status: 'awaiting_payment', changedAt: new Date(), changedBy: 'system' },
+      { phase: 'order', status: 'pending-payment', changedAt: new Date(), changedBy: 'system', reason: 'Order created' },
+      { phase: 'payment', status: 'awaiting_payment', changedAt: new Date(), changedBy: 'system', reason: 'Awaiting trusted payment verification' },
       { phase: 'preparation', status: 'pending', changedAt: new Date(), changedBy: 'system' },
       { phase: 'delivery', status: 'awaiting_handover', changedAt: new Date(), changedBy: 'system' },
     ],
-  });
+    });
+  } catch (error) {
+    if (inventory) await inventory.release(cart.items);
+    throw error;
+  }
   await carts.deleteOne({ userId });
   return order;
 }

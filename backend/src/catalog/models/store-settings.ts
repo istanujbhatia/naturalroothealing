@@ -22,6 +22,10 @@ const storeSettingsSchema = new Schema({
   },
   shippingMinor: { type: Number, required: true, min: 0, default: 0 },
   taxRatePercentage: { type: Number, required: true, min: 0, max: 100, default: 0 },
+  siteImages: {
+    type: [{ key: { type: String, required: true }, reference: { type: String, required: true, match: /^(\/assets\/|https:\/\/)[^\s]+$/ } }],
+    default: [],
+  },
 }, {
   timestamps: true,
   versionKey: false,

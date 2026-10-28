@@ -80,9 +80,28 @@ export async function loginCustomer(
   sessions: SessionRepository,
   sessionTtlDays: number,
 ): Promise<AuthResult> {
+  return loginWithRole(input, users, sessions, sessionTtlDays, 'customer');
+}
+
+export async function loginAdmin(
+  input: { email: string; password: string },
+  users: UserRepository,
+  sessions: SessionRepository,
+  sessionTtlDays: number,
+): Promise<AuthResult> {
+  return loginWithRole(input, users, sessions, sessionTtlDays, 'admin');
+}
+
+async function loginWithRole(
+  input: { email: string; password: string },
+  users: UserRepository,
+  sessions: SessionRepository,
+  sessionTtlDays: number,
+  role: 'customer' | 'admin',
+): Promise<AuthResult> {
   const email = input.email.trim().toLowerCase();
   const user = await users.findOne({ email }, '+passwordHash').lean();
-  if (!user || !user.passwordHash || !(await argon2.verify(user.passwordHash, input.password))) {
+  if (!user || user.role !== role || !user.passwordHash || !(await argon2.verify(user.passwordHash, input.password))) {
     throw new AppError(401, 'INVALID_CREDENTIALS', 'Invalid email or password');
   }
   if (user.status !== 'active') {
@@ -95,6 +114,7 @@ export async function authenticateSession(
   sessionToken: string,
   users: UserRepository,
   sessions: SessionRepository,
+  requiredRole: 'customer' | 'admin' = 'customer',
 ): Promise<{ user: SafeUser; session: SessionRecord }> {
   const session = await sessions.findOne({
     tokenHash: hashOpaqueToken(sessionToken),
@@ -103,8 +123,13 @@ export async function authenticateSession(
   }, '+tokenHash +csrfTokenHash').lean();
   if (!session) throw new AppError(401, 'AUTHENTICATION_REQUIRED', 'Authentication required');
   const user = await users.findOne({ _id: session.userId }).lean();
-  if (!user || user.status !== 'active' || user.role !== 'customer') {
+  if (!user || user.status !== 'active') {
     throw new AppError(401, 'AUTHENTICATION_REQUIRED', 'Authentication required');
+  }
+  if (user.role !== requiredRole) {
+    throw requiredRole === 'admin'
+      ? new AppError(403, 'ADMIN_ACCESS_REQUIRED', 'Administrator access required')
+      : new AppError(401, 'AUTHENTICATION_REQUIRED', 'Authentication required');
   }
   return { user: toSafeUser(user), session };
 }

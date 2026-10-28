@@ -11,6 +11,10 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "tsx src/scripts/seed.ts",
+    "seed:demo-reviews": "tsx src/scripts/seed-demo-reviews.ts",
+    "migrate:review-index": "tsx src/scripts/migrate-review-index.ts",
+    "provision:admin": "tsx src/scripts/provision-admin.ts",
+    "migrate:order-status": "tsx src/scripts/migrate-order-status.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },

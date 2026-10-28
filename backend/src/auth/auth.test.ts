@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AppError } from '../errors.js';
 import { hashOpaqueToken } from './crypto.js';
-import { authenticateSession, loginCustomer, registerCustomer, revokeSession } from './service.js';
+import { authenticateSession, loginAdmin, loginCustomer, registerCustomer, revokeSession } from './service.js';
 import { registerSchema } from './schemas.js';
 
 type User = {
@@ -115,6 +115,57 @@ describe('customer authentication', () => {
       repos.sessionRepository,
       7,
     )).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+  });
+
+  it('keeps customer and admin login roles separate', async () => {
+    const repos = repositories();
+    const admin = await registerCustomer(
+      { name: 'Admin', email: 'admin@example.com', password: 'a-secure-password' },
+      repos.userRepository,
+      repos.sessionRepository,
+      7,
+    );
+    const stored = [...repos.users.values()][0];
+    stored.role = 'admin';
+    await expect(loginCustomer(
+      { email: 'admin@example.com', password: 'a-secure-password' },
+      repos.userRepository,
+      repos.sessionRepository,
+      7,
+    )).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+    await expect(loginAdmin(
+      { email: 'admin@example.com', password: 'a-secure-password' },
+      repos.userRepository,
+      repos.sessionRepository,
+      7,
+    )).resolves.toMatchObject({ user: { role: 'admin' } });
+    expect(admin.user.role).toBe('customer');
+  });
+
+  it('denies a customer session when an admin role is required', async () => {
+    const repos = repositories();
+    const result = await registerCustomer(
+      { name: 'Customer', email: 'customer@example.com', password: 'a-secure-password' },
+      repos.userRepository,
+      repos.sessionRepository,
+      7,
+    );
+    await expect(authenticateSession(result.sessionToken, repos.userRepository, repos.sessionRepository, 'admin'))
+      .rejects.toMatchObject({ statusCode: 403, code: 'ADMIN_ACCESS_REQUIRED' });
+  });
+
+  it('denies suspended users even when their session is otherwise valid', async () => {
+    const repos = repositories();
+    const result = await registerCustomer(
+      { name: 'Suspended', email: 'suspended@example.com', password: 'a-secure-password' },
+      repos.userRepository,
+      repos.sessionRepository,
+      7,
+    );
+    const stored = [...repos.users.values()][0];
+    stored.status = 'suspended';
+    await expect(authenticateSession(result.sessionToken, repos.userRepository, repos.sessionRepository, 'admin'))
+      .rejects.toMatchObject({ statusCode: 401, code: 'AUTHENTICATION_REQUIRED' });
   });
 
   it('rejects role escalation and invalid signup input', () => {

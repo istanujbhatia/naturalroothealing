@@ -22,10 +22,14 @@ const orderItemSchema = new Schema({
 
 const paymentSchema = new Schema({
   status: { type: String, enum: ['awaiting_payment', 'confirmed', 'failed', 'refunded'], required: true },
+  verifiedAt: { type: Date },
+  verifiedBy: { type: String, trim: true, maxlength: 120 },
 }, { _id: false });
 
 const preparationSchema = new Schema({
   status: { type: String, enum: ['pending', 'being_prepared', 'prepared'], required: true },
+  preparedAt: { type: Date },
+  preparedBy: { type: String, trim: true, maxlength: 120 },
 }, { _id: false });
 
 const deliverySchema = new Schema({
@@ -33,14 +37,47 @@ const deliverySchema = new Schema({
   carrier: { type: String, trim: true, maxlength: 50 },
   trackingId: { type: String, trim: true, maxlength: 100 },
   trackingUrl: { type: String, trim: true, maxlength: 500 },
+  handoverAt: { type: Date },
+  handoverBy: { type: String, trim: true, maxlength: 120 },
+  shippedBy: { type: String, trim: true, maxlength: 120 },
   shippedAt: { type: Date },
 }, { _id: false });
 
 const statusHistorySchema = new Schema({
-  phase: { type: String, enum: ['order', 'payment', 'preparation', 'delivery'], required: true },
+  phase: { type: String, enum: ['order', 'payment', 'preparation', 'delivery', 'cancellation'], required: true },
   status: { type: String, required: true },
   changedAt: { type: Date, required: true },
   changedBy: { type: String, required: true, maxlength: 120 },
+  reason: { type: String, trim: true, maxlength: 240 },
+}, { _id: false });
+
+const canonicalTrackingSchema = new Schema({
+  carrier: { type: String, trim: true, maxlength: 50, default: null },
+  tracking_id: { type: String, trim: true, maxlength: 100, default: null },
+  tracking_url: { type: String, trim: true, maxlength: 500, default: null },
+  handover_at: { type: Date, default: null },
+  shipped_at: { type: Date, default: null },
+}, { _id: false });
+
+const canonicalOrderStatusSchema = new Schema({
+  payment: { type: String, enum: ['awaiting_payment', 'confirmed', 'failed', 'refunded'], required: true },
+  prep: { type: String, enum: ['pending', 'being_prepared', 'prepared'], required: true },
+  delivery: { type: String, enum: ['pending', 'processing', 'delivered'], required: true },
+  tracking: { type: canonicalTrackingSchema, required: true },
+}, { _id: false });
+
+const cancellationSchema = new Schema({
+  status: { type: String, enum: ['cancelled'], required: true },
+  reason: { type: String, required: true, maxlength: 240 },
+  cancelled_at: { type: Date, required: true },
+  cancelled_by: { type: String, required: true, maxlength: 120 },
+}, { _id: false });
+
+const stockReservationSchema = new Schema({
+  status: { type: String, enum: ['reserved', 'consumed', 'released'], required: true },
+  reservedAt: { type: Date, required: true },
+  expiresAt: { type: Date, required: true },
+  releasedAt: { type: Date },
 }, { _id: false });
 
 const orderSchema = new Schema({
@@ -62,11 +99,15 @@ const orderSchema = new Schema({
   preparation: { type: preparationSchema },
   delivery: { type: deliverySchema },
   statusHistory: { type: [statusHistorySchema], default: [] },
+  order_status: { type: canonicalOrderStatusSchema },
+  cancellation: { type: cancellationSchema },
+  stockReservation: { type: stockReservationSchema },
+  statusMigration: { version: { type: Number }, needsReview: { type: Boolean }, reasons: { type: [String] } },
   trackingCarrier: { type: String, trim: true, maxlength: 50 },
   trackingId: { type: String, trim: true, maxlength: 100 },
   trackingUrl: { type: String, trim: true, maxlength: 500 },
   fulfilledAt: { type: Date },
-}, { timestamps: true, versionKey: false });
+}, { timestamps: true, optimisticConcurrency: true });
 
 orderSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
 orderSchema.index({ userId: 1, createdAt: -1 });

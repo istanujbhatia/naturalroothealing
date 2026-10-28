@@ -3,6 +3,7 @@ import { ProductModel } from './models/product.js';
 import { CategoryModel } from './models/category.js';
 import { calculateFinalPriceMinor } from './price.js';
 import { seedCatalog } from './seed-service.js';
+import { resolvedSiteImages } from './site-images.js';
 
 describe('catalog price rules', () => {
   it('calculates percentage discounts using integer minor units', () => {
@@ -14,6 +15,14 @@ describe('catalog price rules', () => {
     expect(() => calculateFinalPriceMinor(-1, { type: 'percentage', value: 10 })).toThrow();
     expect(() => calculateFinalPriceMinor(1000, { type: 'percentage', value: 101 })).toThrow();
     expect(() => calculateFinalPriceMinor(1000, { type: 'percentage', value: 10.5 })).toThrow();
+  });
+});
+
+describe('site image settings', () => {
+  it('keeps defaults and applies a saved path by image key', () => {
+    const images = resolvedSiteImages([{ key: 'home-hero-image.png', reference: '/assets/new-hero.jpg' }]);
+    expect(images.find((image) => image.key === 'home-hero-image.png')?.reference).toBe('/assets/new-hero.jpg');
+    expect(images.find((image) => image.key === 'shop-banner.png')?.reference).toBe('/assets/shop-banner.png');
   });
 });
 

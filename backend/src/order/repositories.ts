@@ -3,6 +3,7 @@ import { CartModel } from '../cart/models/cart.js';
 import { ProductModel } from '../catalog/models/product.js';
 import { StoreSettingsModel } from '../catalog/models/store-settings.js';
 import { OrderModel } from './models/order.js';
+import { reserveInventory, releaseInventory } from '../payment/inventory.js';
 import type { Product } from './service.js';
 
 export const orderRepository = {
@@ -27,3 +28,5 @@ export const orderAddressRepository = {
 export const settingsRepository = {
   findOne(query: Record<string, unknown>) { return StoreSettingsModel.findOne(query).lean(); },
 };
+
+export const orderInventoryRepository = { reserve: reserveInventory, release: releaseInventory };

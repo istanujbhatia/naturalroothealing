@@ -1,6 +1,6 @@
 # Natural Root Healing backend
 
-This is the isolated Express and TypeScript foundation for the Natural Root Healing API. It exposes health and customer authentication endpoints; catalog writes, payments, and admin functionality remain intentionally out of scope.
+This is the Express and TypeScript backend for the Natural Root Healing API. It exposes customer, catalog, order, admin, and test-payment functionality.
 
 Phase 2 adds Mongoose catalog models and an idempotent seed command. The frontend remains disconnected from these models.
 
@@ -109,8 +109,65 @@ GET  /api/v1/orders
 GET  /api/v1/orders/:orderId
 ```
 
-`POST /api/v1/orders` requires an `addressId` body field and an `Idempotency-Key` header. It re-reads active products and calculates USD totals in integer cents. The approved current rules are zero shipping and zero tax; no inventory quantity is enforced because the catalog has no approved stock data. Orders begin as `pending-payment`, with separate pending payment and unfulfilled fulfillment statuses. Product and shipping-address snapshots are stored on the order, and the cart is cleared only after the order document is created.
+`POST /api/v1/orders` requires an `addressId` body field and an `Idempotency-Key` header. It re-reads active products and calculates USD totals in integer cents. The approved current rules are zero shipping and zero tax. Orders begin as `pending-payment`, with separate pending payment and unfulfilled fulfillment statuses. Product and shipping-address snapshots are stored on the order, and the cart is cleared only after the order document is created.
 
-This checkout foundation is intentionally transactionless for the current local deployment: idempotency prevents repeated submissions from creating a second order, and the order is written before cart cleanup so a cleanup failure cannot lose the order. Enable MongoDB transactions before production checkout, with a reconciliation job for any stale cart left by a partial failure.
+When inventory records exist, order creation atomically reserves the requested available stock. The default reservation window is 30 minutes (`PAYMENT_RESERVATION_TTL_MINUTES`); failed, expired, or explicitly cancelled orders release the reservation. A background worker checks expired reservations once per minute. Checkout requires inventory records with sufficient available stock, so products without stock data cannot be ordered.
 
-Razorpay, payment confirmation, stock reservation, cancellation/refund rules, and admin order transitions remain out of scope until their policies are approved.
+Order creation remains transactionless for the current local deployment: idempotency prevents repeated submissions from creating a second order, and the order is written before cart cleanup so a cleanup failure cannot lose the order. Payment confirmation, expiry, and cancellation reservation settlement use MongoDB transactions; staging therefore requires a transaction-capable MongoDB deployment such as a replica set or Atlas. If the provider order is created but local Payment persistence fails, the attempt is left locked and must be reconciled before retrying; the system does not create another provider order automatically.
+
+The current local payment integration uses Razorpay Test Mode only. `POST /api/v1/payments/razorpay/order` creates a provider order for an existing pending order, `POST /api/v1/payments/razorpay/verify` verifies the checkout signature and then fetches the provider payment before marking the order paid, and `GET /api/v1/payments/razorpay/:orderId/status` provides an owner-only recovery/status view. `POST /api/v1/webhooks/razorpay` verifies the configured webhook HMAC and handles captured, failed, and full refunded events idempotently while ignoring stale state regressions. Refund events are matched through the refund entity's `payment_id`; partial refunds are rejected until a refund model and policy exist. Configure `RAZORPAY_MODE=test`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, and `RAZORPAY_WEBHOOK_SECRET`; never commit these values. The browser cannot mark payment confirmed by itself.
+
+Payment attempts remain pending when checkout is abandoned. A verified failure releases the reservation and marks the canonical payment state failed. A successful verified payment consumes the reservation and decrements `onHand`; it is never released again by cancellation. Expiry processing handles up to 10 batches of 100 records per worker run and retries remaining records on the next run. Manual investigation is required for a locked payment attempt or any transaction/database outage reported by the worker.
+
+Inventory is initialized only through the protected admin inventory adjustment workflow. Do not invent opening quantities: review each active product and enter approved stock with a reason before enabling staging checkout. Products without an Inventory record are rejected at order creation.
+
+## Administrative access and audit logging
+
+Phase 7 adds server-enforced administrator sessions without public admin registration. Provision the first administrator once from a controlled server environment:
+
+```powershell
+cd backend
+$env:ADMIN_NAME = 'Store Administrator'
+$env:ADMIN_EMAIL = 'admin@example.com'
+$env:ADMIN_PASSWORD = 'use-a-long-random-password'
+npm run provision:admin
+Remove-Item Env:ADMIN_NAME, Env:ADMIN_EMAIL, Env:ADMIN_PASSWORD
+```
+
+The command refuses to run when an administrator already exists. It hashes the password with Argon2id and never logs or stores the plaintext password. Admin login is `POST /api/v1/admin/auth/login`; all other `/api/v1/admin/*` routes require an active admin session and CSRF protection for mutations. Customer sessions receive a safe `403` response and cannot be upgraded by browser-supplied role or user ID values.
+
+`GET /api/v1/admin/audit-logs` is restricted to administrators. Audit records contain the actor, action, entity, request ID, timestamp, and sanitized before/after changes. Sensitive keys such as passwords, hashes, tokens, cookies, secrets, and payment secrets are redacted. Admin security events and future sensitive admin mutations should await `recordAudit`; if the audit write fails, the operation fails closed rather than claiming the action was recorded. Product, inventory, and order management are intentionally not implemented in this phase.
+
+## Admin catalog and inventory
+
+Phase 8 adds protected catalog APIs under `/api/v1/admin/catalog`. Every admin mutation requires an active admin session and the CSRF header. Images are existing asset or HTTPS references only; no upload provider is configured.
+
+```text
+GET    /api/v1/admin/catalog/products?page=1&limit=20&search=testo&status=active
+POST   /api/v1/admin/catalog/products
+PATCH  /api/v1/admin/catalog/products/:productId
+GET    /api/v1/admin/catalog/categories
+POST   /api/v1/admin/catalog/categories
+PATCH  /api/v1/admin/catalog/categories/:categoryId
+GET    /api/v1/admin/catalog/inventory
+PATCH  /api/v1/admin/catalog/inventory/:productId/adjust
+```
+
+Products are archived by changing `status` to `archived`; there is no permanent delete operation. Product prices use integer USD cents and final prices are calculated by the backend. Inventory adjustments require a non-zero integer `delta` and a reason, and use an atomic conditional update so available stock cannot become negative. Price, status, category, and inventory changes are written to the audit log.
+
+Public catalog reads are available at `/api/v1/catalog/products`, `/api/v1/catalog/products/:slug`, and `/api/v1/catalog/categories`. They expose only active products and safe public fields. The storefront keeps its existing visual design and asset references while loading these active products with a local fallback during API outages.
+
+The minimal admin catalog screen is available at `/admin/catalog`. It uses the protected admin session, supports product search/filtering/pagination, product create/edit/archive, category creation, and inventory adjustments with reasons. It does not introduce an upload provider or payment functionality.
+
+## Admin orders and manual DHL tracking
+
+Phase 9 adds protected order operations under `/api/v1/admin/orders`:
+
+```text
+GET   /api/v1/admin/orders?page=1&limit=10&search=NRH-&orderStatus=processing
+GET   /api/v1/admin/orders/:orderId
+PATCH /api/v1/admin/orders/:orderId/status
+PATCH /api/v1/admin/orders/:orderId/shipment
+```
+
+Order, preparation, delivery, payment, and fulfillment state remain separate. Payment confirmation cannot be performed through the generic admin status endpoint because no trusted payment/manual-payment workflow is configured. DHL shipment entry requires paid payment, prepared order state, delivery handover processing, a tracking ID, shipment date, and an HTTPS URL on an approved DHL domain. The backend stores these values; it does not retrieve live DHL events. Customer order responses already include tracking details only after owner authorization, and admin order responses include limited customer contact information for support.

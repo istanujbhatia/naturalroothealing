@@ -44,6 +44,24 @@ export function requireAuth(config: AppConfig): RequestHandler {
   };
 }
 
+export function requireAdmin(config: AppConfig): RequestHandler {
+  return async (req, _res, next) => {
+    try {
+      const token = parseCookies(req.header('cookie'))[config.sessionCookieName];
+      if (!token) throw new AppError(401, 'AUTHENTICATION_REQUIRED', 'Authentication required');
+      const { user, session } = await authenticateSession(token, userRepository, sessionRepository, 'admin');
+      req.auth = {
+        userId: user.id,
+        sessionToken: token,
+        csrfTokenHash: session.csrfTokenHash,
+      };
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
 export const requireCsrf: RequestHandler = (req, _res, next) => {
   const provided = req.header('x-csrf-token');
   if (!req.auth || !provided) {

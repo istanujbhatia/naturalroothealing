@@ -47,6 +47,13 @@ describe('backend foundation', () => {
     expect(response.body.error.requestId).toBeTruthy();
   });
 
+  it('protects the admin catalog route without a session', async () => {
+    const response = await request(createApp(config)).get('/api/v1/admin/catalog/products');
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('AUTHENTICATION_REQUIRED');
+  });
+
   it('limits repeated authentication attempts', async () => {
     const limitedConfig = { ...config, authRateLimitMax: 1 };
     const app = createApp(limitedConfig);

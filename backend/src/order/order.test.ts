@@ -33,7 +33,7 @@ describe('order creation', () => {
     const repos = repositories();
     const order = await createOrder(userId, addressId.toString(), 'checkout-1', repos.orderRepository, repos.carts, repos.products, repos.addresses, repos.settings);
 
-    expect(order).toMatchObject({ currency: 'USD', subtotalMinor: 39800, shippingMinor: 0, taxMinor: 0, totalMinor: 39800, orderStatus: 'processing', paymentStatus: 'pending', payment: { status: 'awaiting_payment' }, preparation: { status: 'pending' }, delivery: { status: 'awaiting_handover' } });
+    expect(order).toMatchObject({ currency: 'USD', subtotalMinor: 39800, shippingMinor: 0, taxMinor: 0, totalMinor: 39800, orderStatus: 'pending-payment', paymentStatus: 'pending', payment: { status: 'awaiting_payment' }, preparation: { status: 'pending' }, delivery: { status: 'awaiting_handover' }, order_status: { payment: 'awaiting_payment', prep: 'pending', delivery: 'pending', tracking: { carrier: null, tracking_id: null, tracking_url: null, handover_at: null, shipped_at: null } } });
     expect(order.statusHistory).toHaveLength(4);
     expect(order.items).toEqual([{ productId, slug: 'testo-boost-capsules', name: 'Testo Boost Capsules', quantity: 2, unitPriceMinor: 19900, lineTotalMinor: 39800 }]);
     expect(order.shippingAddress).toMatchObject({ recipientName: repos.existingAddress.recipientName, addressLine1: repos.existingAddress.addressLine1, country: repos.existingAddress.country });
@@ -54,6 +54,19 @@ describe('order creation', () => {
     await expect(createOrder('another-user', addressId.toString(), 'checkout-3', repos.orderRepository, repos.carts, repos.products, repos.addresses, repos.settings))
       .rejects.toMatchObject({ code: 'ADDRESS_NOT_FOUND' });
     expect(repos.orders).toHaveLength(0);
+  });
+
+  it('keeps product and address snapshots independent from later catalog edits', async () => {
+    const repos = repositories();
+    const order = await createOrder(userId, addressId.toString(), 'checkout-snapshot', repos.orderRepository, repos.carts, repos.products, repos.addresses, repos.settings);
+    const itemSnapshot = { ...order.items[0] };
+    const addressSnapshot = { ...order.shippingAddress };
+    repos.existingAddress.recipientName = 'Changed Customer';
+    const product = (await repos.products.findByIds())[0];
+    product.name = 'Changed Product';
+    product.listPriceMinor = 999;
+    expect(order.items[0]).toEqual(itemSnapshot);
+    expect(order.shippingAddress).toEqual(addressSnapshot);
   });
 });
 

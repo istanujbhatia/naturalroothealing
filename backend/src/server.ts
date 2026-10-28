@@ -3,6 +3,7 @@ import { connectDatabase, disconnectDatabase } from './db.js';
 import { loadConfig } from './config.js';
 import { createLogger } from './logger.js';
 import './catalog/models/category.js';
+import { expirePendingReservations } from './payment/service.js';
 
 async function start() {
   const config = loadConfig();
@@ -10,6 +11,7 @@ async function start() {
   await connectDatabase(config.mongodbUri, logger);
 
   const app = createApp(config);
+  const reservationSweeper = setInterval(() => { void expirePendingReservations().catch((error: unknown) => logger.error({ err: error }, 'Payment reservation sweep failed')); }, 60_000);
   const server = app.listen(config.port, () => {
     logger.info({ port: config.port }, 'API server started');
   });
@@ -22,6 +24,7 @@ async function start() {
         process.exitCode = 1;
       }
       await disconnectDatabase(logger);
+      clearInterval(reservationSweeper);
     });
   };
 
