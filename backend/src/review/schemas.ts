@@ -7,7 +7,10 @@ export const reviewCreateSchema = z.object({
 });
 
 export const reviewAdminUpdateSchema = z.object({
-  isFeatured: z.boolean(),
+  isFeatured: z.boolean().optional(),
+  isStrip: z.boolean().optional(),
+}).refine((value) => value.isFeatured !== undefined || value.isStrip !== undefined, {
+  message: 'Choose a review visibility setting',
 });
 
 export const reviewAdminCreateSchema = z.object({
@@ -18,4 +21,5 @@ export const reviewAdminCreateSchema = z.object({
   body: z.string().trim().min(1).max(2000),
   status: z.enum(['pending', 'published', 'rejected']).default('published'),
   isFeatured: z.boolean().default(true),
+  isStrip: z.boolean().default(false),
 });

@@ -18,6 +18,7 @@ import { createAdminCatalogRouter } from './routes/admin-catalog.js';
 import { createAdminOrdersRouter } from './routes/admin-orders.js';
 import { createAdminUsersRouter } from './routes/admin-users.js';
 import { createContactRouter } from './routes/contact.js';
+import { createNewsletterRouter } from './routes/newsletter.js';
 import { createAdminContactRouter } from './routes/admin-contact.js';
 import { createReviewsRouter } from './routes/reviews.js';
 import { createAdminReviewsRouter } from './routes/admin-reviews.js';
@@ -63,6 +64,7 @@ export function createApp(config: AppConfig) {
   app.use('/api/v1/payments', createPaymentsRouter(config));
   app.use('/api/v1/webhooks', createPaymentWebhooksRouter(config));
   app.use('/api/v1/contact', createContactRouter(config));
+  app.use('/api/v1/newsletter', createNewsletterRouter(config));
   app.use('/api/v1/admin', createAdminRouter(config));
   app.use('/api/v1/admin/catalog', createAdminCatalogRouter(config));
   app.use('/api/v1/admin/orders', createAdminOrdersRouter(config));

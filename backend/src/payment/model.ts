@@ -20,8 +20,8 @@ const paymentSchema = new Schema({
 }, { timestamps: true, versionKey: false });
 
 paymentSchema.index({ userId: 1, idempotencyKey: 1 }, { unique: true });
-paymentSchema.index({ provider: 1, providerPaymentId: 1 }, { unique: true, sparse: true });
-paymentSchema.index({ provider: 1, providerOrderId: 1 }, { unique: true, sparse: true });
+paymentSchema.index({ provider: 1, providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $exists: true } } });
+paymentSchema.index({ provider: 1, providerOrderId: 1 }, { unique: true, partialFilterExpression: { providerOrderId: { $exists: true } } });
 
 export type Payment = InferSchemaType<typeof paymentSchema>;
 export const PaymentModel = model('Payment', paymentSchema);

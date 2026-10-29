@@ -3,6 +3,7 @@ import mongoose, { Types, type ClientSession } from 'mongoose';
 import type { AppConfig } from '../config.js';
 import { AppError } from '../errors.js';
 import { OrderModel } from '../order/models/order.js';
+import { CartModel } from '../cart/models/cart.js';
 import { canonicalOrderStatus } from '../order/status.js';
 import { PaymentModel } from './model.js';
 import { settleInventory } from './inventory.js';
@@ -19,7 +20,7 @@ async function razorpayRequest<T>(config: AppConfig, path: string, init: Request
   const { keyId, secret } = requireConfig(config);
   const response = await fetch(`https://api.razorpay.com/v1${path}`, { ...init, headers: { Authorization: `Basic ${Buffer.from(`${keyId}:${secret}`).toString('base64')}`, 'Content-Type': 'application/json', ...(init.headers || {}) } });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', 'The payment provider could not process the request');
+  if (!response.ok) throw new AppError(502, 'PAYMENT_PROVIDER_ERROR', providerErrorMessage(payload));
   return payload as T;
 }
 
@@ -27,11 +28,13 @@ export async function startRazorpayPayment(userId: string, orderId: string, idem
   if (!Types.ObjectId.isValid(orderId)) throw new AppError(404, 'ORDER_NOT_FOUND', 'Order not found');
   const existing = await PaymentModel.findOne({ userId, idempotencyKey }).lean();
   if (existing) {
+    if (existing.currency === 'USD' && existing.amountMinor < 100) throw new AppError(409, 'PAYMENT_AMOUNT_TOO_LOW', 'This order is below the $1.00 minimum for Razorpay USD checkout. Please create a new order after updating the product price');
     if (existing.providerOrderId) return paymentResponse(existing, config);
     throw new AppError(409, 'PAYMENT_ATTEMPT_IN_PROGRESS', 'A payment attempt is already being prepared. Please retry after checking its status');
   }
   const order = await OrderModel.findOne({ _id: orderId, userId }).lean();
   if (!order) throw new AppError(404, 'ORDER_NOT_FOUND', 'Order not found');
+  if (order.currency === 'USD' && order.totalMinor < 100) throw new AppError(409, 'PAYMENT_AMOUNT_TOO_LOW', 'This order is below the $1.00 minimum for Razorpay USD checkout. Please create a new order after updating the product price');
   const status = canonicalOrderStatus(order);
   if (status.payment !== 'awaiting_payment') throw new AppError(409, 'PAYMENT_NOT_ELIGIBLE', 'This order is not awaiting payment');
   if (order.stockReservation?.status !== 'reserved' || new Date(order.stockReservation.expiresAt).getTime() <= Date.now()) {
@@ -42,7 +45,14 @@ export async function startRazorpayPayment(userId: string, orderId: string, idem
   try {
     attempt = await PaymentModel.create({ orderId: order._id, userId, provider: 'razorpay', mode: 'test', amountMinor: order.totalMinor, currency: order.currency, status: 'created', signatureVerified: false, idempotencyKey, expiresAt: order.stockReservation.expiresAt, initiationClaimedAt: new Date(), safeMetadata: { orderNumber: order.orderNumber } });
   } catch (error) {
-    if ((error as any)?.code === 11000) throw new AppError(409, 'PAYMENT_ATTEMPT_IN_PROGRESS', 'A payment attempt is already being prepared. Please retry after checking its status');
+    if (isDuplicateKeyError(error)) {
+      const matchingAttempt = await PaymentModel.findOne({ userId, idempotencyKey }).lean();
+      if (matchingAttempt) {
+        if (matchingAttempt.providerOrderId) return paymentResponse(matchingAttempt, config);
+        throw new AppError(409, 'PAYMENT_ATTEMPT_IN_PROGRESS', 'A payment attempt is already being prepared. Please retry after checking its status');
+      }
+      throw new AppError(503, 'PAYMENT_PERSISTENCE_CONFLICT', 'Payment setup conflicted with an existing database record. Check payment status before retrying');
+    }
     throw error;
   }
   const providerOrder = await razorpayRequest<{ id: string; amount: number; currency: string }>(config, '/orders', { method: 'POST', body: JSON.stringify({ amount: order.totalMinor, currency: order.currency, receipt: order.orderNumber, notes: { internal_order_id: String(order._id) } }) });
@@ -140,6 +150,7 @@ async function failPayment(payment: any, reason: string) {
     if (['confirmed', 'refunded'].includes(current.payment)) return;
     payment.status = 'failed'; await payment.save({ session });
     if (order.stockReservation?.status !== 'reserved') return;
+    await restoreOrderItemsToCart(order, session);
     await settleInventory(order.items.map((item: any) => ({ productId: item.productId, quantity: item.quantity })), 'release', session);
     order.stockReservation = { ...order.stockReservation, status: 'released', releasedAt: new Date() } as any;
     order.order_status = { ...current, payment: 'failed' };
@@ -169,6 +180,7 @@ async function expireOrderReservation(orderId: unknown, reason: string) {
   await runTransaction(async (session) => {
     const order = await OrderModel.findOne({ _id: orderId, 'stockReservation.status': 'reserved', 'stockReservation.expiresAt': { $lte: new Date() }, 'order_status.payment': 'awaiting_payment' }).session(session);
     if (!order) return;
+    await restoreOrderItemsToCart(order, session);
     await settleInventory(order.items.map((item: any) => ({ productId: item.productId, quantity: item.quantity })), 'release', session);
     order.stockReservation = { ...order.stockReservation, status: 'released', releasedAt: new Date() } as any;
     order.order_status = { ...canonicalOrderStatus(order), payment: 'failed' };
@@ -178,6 +190,28 @@ async function expireOrderReservation(orderId: unknown, reason: string) {
     await order.save({ session });
     await PaymentModel.updateMany({ orderId, status: { $in: ['created', 'pending', 'authorized'] } }, { $set: { status: 'expired' } }, { session }).exec();
   });
+}
+
+export async function abandonRazorpayPayment(userId: string, orderId: string): Promise<void> {
+  const payment = await PaymentModel.findOne({ orderId, userId, status: { $in: ['created', 'pending', 'authorized'] } }).sort({ createdAt: -1 });
+  if (!payment) return;
+  await failPayment(payment, 'Payment checkout was closed before completion');
+}
+
+async function restoreOrderItemsToCart(order: any, session: ClientSession): Promise<void> {
+  const existing = await CartModel.findOne({ userId: order.userId }).session(session).lean();
+  const items = mergeRestoredCartItems(existing?.items || [], order.items || []);
+  await CartModel.findOneAndUpdate({ userId: order.userId }, { $set: { items }, $setOnInsert: { userId: order.userId } }, { upsert: true, session }).exec();
+}
+
+export function mergeRestoredCartItems(currentItems: Array<{ productId: unknown; quantity: number }>, restoredItems: Array<{ productId: unknown; quantity: number }>) {
+  const items = currentItems.map((item) => ({ productId: item.productId, quantity: item.quantity }));
+  for (const restored of restoredItems) {
+    const current = items.find((item) => String(item.productId) === String(restored.productId));
+    if (current) current.quantity = Math.min(99, current.quantity + restored.quantity);
+    else items.push({ productId: restored.productId, quantity: Math.min(99, restored.quantity) });
+  }
+  return items;
 }
 
 export async function releaseOrderReservation(orderId: string): Promise<void> {
@@ -206,6 +240,13 @@ export function verifyRazorpaySignature(providerOrderId: string, providerPayment
 export function getWebhookPaymentId(event: string, entity: any): string | undefined { return (event === 'refund.processed' ? entity?.payment_id : entity?.id) || undefined; }
 export function isFullRefundForPayment(refund: any, payment: { providerPaymentId?: string; amountMinor: number; currency: string }): boolean { return refund?.payment_id === payment.providerPaymentId && refund?.amount === payment.amountMinor && refund?.currency === payment.currency; }
 function safeEqual(first: string, second: string) { const a = Buffer.from(first); const b = Buffer.from(second); return a.length === b.length && timingSafeEqual(a, b); }
+export function isDuplicateKeyError(error: unknown): boolean { return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000; }
+function providerErrorMessage(payload: any): string {
+  const code = typeof payload?.error?.code === 'string' ? payload.error.code : '';
+  const description = typeof payload?.error?.description === 'string' ? payload.error.description.replace(/[\r\n]+/g, ' ').slice(0, 160) : '';
+  const reason = [code, description].filter(Boolean).join(': ');
+  return reason ? `Razorpay rejected the payment request: ${reason}` : 'The payment provider could not process the request';
+}
 function paymentResponse(payment: any, config: AppConfig) { if (!config.razorpayKeyId) throw new AppError(503, 'PAYMENT_NOT_CONFIGURED', 'Test payment processing is not configured'); return { paymentId: String(payment._id), orderId: String(payment.orderId), providerOrderId: payment.providerOrderId, amount: payment.amountMinor, currency: payment.currency, keyId: config.razorpayKeyId, status: payment.status, expiresAt: payment.expiresAt }; }
 
 export async function getRazorpayPaymentStatus(userId: string, orderId: string) {

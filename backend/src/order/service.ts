@@ -61,10 +61,13 @@ export async function createOrder(userId: string, addressId: string, idempotency
     subtotalMinor += lineTotalMinor;
     return { productId: product._id, slug: product.slug, name: product.name, quantity: item.quantity, unitPriceMinor, lineTotalMinor };
   });
-  if (inventory) await inventory.reserve(cart.items);
   const shippingMinor = store.shippingMinor ?? 0;
   const taxMinor = Math.round(subtotalMinor * ((store.taxRatePercentage ?? 0) / 100));
   const totalMinor = subtotalMinor + shippingMinor + taxMinor;
+  if (store.catalogCurrency === 'USD' && totalMinor < 100) {
+    throw new AppError(409, 'ORDER_TOTAL_TOO_LOW_FOR_PAYMENT', 'The order total must be at least $1.00 for online payment');
+  }
+  if (inventory) await inventory.reserve(cart.items);
   const expiresAt = new Date(Date.now() + reservationTtlMinutes * 60 * 1000);
   let order: OrderRecord;
   try {

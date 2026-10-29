@@ -12,6 +12,10 @@ describe('catalog management validation', () => {
       images: [{ reference: 'javascript:bad', altText: '' }], currency: 'USD', listPriceMinor: -1, discount: { type: 'percentage', value: 101 }, status: 'active',
     });
     expect(result.success).toBe(false);
+    expect(productSchema.safeParse({
+      name: 'Too cheap', slug: 'too-cheap', description: 'Description', details: 'Details', ingredients: 'Label', size: '1 pack', categoryId: 'category-id',
+      images: [{ reference: '/assets/product.jpg', altText: 'Too cheap' }], currency: 'USD', listPriceMinor: 99, discount: { type: 'percentage', value: 0 }, status: 'draft',
+    }).success).toBe(false);
   });
 
   it('requires a reason and non-zero integer for inventory adjustments', () => {

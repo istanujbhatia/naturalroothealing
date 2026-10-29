@@ -123,7 +123,7 @@ export function createAdminCatalogRouter(config: AppConfig): Router {
 
   router.post('/categories', requireCsrf, validateBody(categorySchema), async (req, res, next) => {
     try {
-      const category = await CategoryModel.create(req.body);
+      const category = await CategoryModel.create({ ...req.body, slug: await uniqueCategorySlug(req.body.name) });
       await recordAudit({ actorUserId: req.auth!.userId, action: 'category.created', entityType: 'Category', entityId: String(category._id), requestId: String(req.id), changes: { after: { name: category.name, slug: category.slug, status: category.status, sortOrder: category.sortOrder } } });
       res.status(201).json({ data: { category: category.toObject() } });
     } catch (error) { next(normalizeDuplicateError(error)); }
@@ -132,7 +132,10 @@ export function createAdminCatalogRouter(config: AppConfig): Router {
   router.patch('/categories/:categoryId', requireCsrf, validateBody(categoryUpdateSchema), async (req, res, next) => {
     try {
       const category = await requireCategoryById(String(req.params.categoryId ?? ''));
-      const updated = await CategoryModel.findByIdAndUpdate(category._id, { $set: req.body }, { new: true, runValidators: true }).lean();
+      const update = { ...req.body };
+      if (update.name) update.slug = await uniqueCategorySlug(update.name, category._id);
+      else delete update.slug;
+      const updated = await CategoryModel.findByIdAndUpdate(category._id, { $set: update }, { new: true, runValidators: true }).lean();
       await recordAudit({ actorUserId: req.auth!.userId, action: 'category.updated', entityType: 'Category', entityId: String(category._id), requestId: String(req.id), changes: { before: { name: category.name, slug: category.slug, status: category.status, sortOrder: category.sortOrder }, after: { name: updated!.name, slug: updated!.slug, status: updated!.status, sortOrder: updated!.sortOrder } } });
       res.json({ data: { category: updated } });
     } catch (error) { next(normalizeDuplicateError(error)); }
@@ -203,6 +206,13 @@ async function uniqueProductSlug(name: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
   while (await ProductModel.exists({ slug: candidate })) candidate = `${base}-${suffix++}`;
+  return candidate;
+}
+async function uniqueCategorySlug(name: string, currentId?: unknown): Promise<string> {
+  const base = slugifyProductName(name);
+  let candidate = base;
+  let suffix = 2;
+  while (await CategoryModel.exists({ slug: candidate, ...(currentId ? { _id: { $ne: currentId } } : {}) })) candidate = `${base}-${suffix++}`;
   return candidate;
 }
 function normalizeDuplicateError(error: unknown): unknown { return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000 ? new AppError(409, 'DUPLICATE_CATALOG_VALUE', 'A catalog value already exists') : error; }

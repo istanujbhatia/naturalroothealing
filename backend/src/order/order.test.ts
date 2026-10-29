@@ -56,6 +56,16 @@ describe('order creation', () => {
     expect(repos.orders).toHaveLength(0);
   });
 
+  it('rejects a USD order below the Razorpay minimum before reserving stock', async () => {
+    const repos = repositories();
+    repos.products.findByIds = async () => [{
+      _id: productId, slug: 'low-price', name: 'Low price', currency: 'USD', listPriceMinor: 10, discount: { type: 'percentage' as const, value: 0 },
+    }];
+    await expect(createOrder(userId, addressId.toString(), 'checkout-low-price', repos.orderRepository, repos.carts, repos.products, repos.addresses, repos.settings))
+      .rejects.toMatchObject({ code: 'ORDER_TOTAL_TOO_LOW_FOR_PAYMENT' });
+    await expect(repos.carts.findOne()).resolves.toMatchObject({ items: [{ productId, quantity: 2 }] });
+  });
+
   it('keeps product and address snapshots independent from later catalog edits', async () => {
     const repos = repositories();
     const order = await createOrder(userId, addressId.toString(), 'checkout-snapshot', repos.orderRepository, repos.carts, repos.products, repos.addresses, repos.settings);

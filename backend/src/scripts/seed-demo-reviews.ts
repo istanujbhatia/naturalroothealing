@@ -18,10 +18,10 @@ async function seedDemoReviews() {
     const products = await ProductModel.find({ status: 'active' }).select('_id name').sort({ createdAt: 1 }).lean();
     let created = 0;
     for (const [productIndex, product] of products.entries()) {
-      const existingCount = await ReviewModel.countDocuments({ productId: product._id, source: 'admin_demo' });
+      const existingCount = await ReviewModel.countDocuments({ productId: product._id, source: 'customer_customer', userId: { $exists: false } });
       for (let reviewIndex = existingCount; reviewIndex < 5; reviewIndex += 1) {
         const [authorName, title, body, rating = 5] = samples[(productIndex + reviewIndex) % samples.length] ?? samples[0]!;
-        await ReviewModel.create({ productId: product._id, authorName, source: 'admin_demo', rating, title, body, status: 'published', isFeatured: true });
+        await ReviewModel.create({ productId: product._id, authorName, source: 'customer_customer', rating, title, body, status: 'published', isFeatured: true });
         created += 1;
       }
     }

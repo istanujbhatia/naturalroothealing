@@ -11,6 +11,13 @@ import { reviewCreateSchema } from '../review/schemas.js';
 export function createReviewsRouter(config: AppConfig): Router {
   const router = Router();
 
+  router.get('/strip', async (_req, res, next) => {
+    try {
+      const reviews = await ReviewModel.find({ status: 'published', isStrip: true }).populate({ path: 'productId', select: 'name slug', match: { status: 'active' } }).populate('userId', 'name').sort({ createdAt: -1 }).limit(20).lean();
+      res.json({ data: { reviews: reviews.filter((review: any) => review.productId).map(toStripReview) } });
+    } catch (error) { next(error); }
+  });
+
   router.get('/:slug/reviews', async (req, res, next) => {
     try {
       const product = await ProductModel.findOne({ slug: req.params.slug, status: 'active' }).select('_id').lean();
@@ -35,5 +42,6 @@ export function createReviewsRouter(config: AppConfig): Router {
   return router;
 }
 
-function toPublicReview(review: any) { return { id: String(review._id), rating: review.rating, title: review.title, body: review.body, authorName: review.authorName || review.userId?.name || 'Customer', isDemo: review.source === 'admin_demo', createdAt: review.createdAt }; }
+function toPublicReview(review: any) { return { id: String(review._id), rating: review.rating, title: review.title, body: review.body, authorName: review.authorName || review.userId?.name || 'Customer', createdAt: review.createdAt }; }
+function toStripReview(review: any) { return { id: String(review._id), rating: review.rating, summary: review.title, body: review.body, authorName: review.authorName || review.userId?.name || 'Customer', productName: review.productId?.name || 'Product', productSlug: review.productId?.slug || null }; }
 function isDuplicate(error: unknown): boolean { return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000; }

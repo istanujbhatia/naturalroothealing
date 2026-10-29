@@ -85,7 +85,7 @@ const productSchema = new Schema({
   listPriceMinor: {
     type: Number,
     required: true,
-    min: 0,
+    min: 100,
     validate: {
       validator: Number.isSafeInteger,
       message: 'listPriceMinor must be a non-negative integer',

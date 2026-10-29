@@ -27,7 +27,7 @@ export const productSchema = z.object({
   categoryId: z.string().trim().min(1),
   images: z.array(image).min(1).max(12),
   currency: z.literal('USD'),
-  listPriceMinor: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  listPriceMinor: z.number().int().min(100, 'USD products must be at least $1.00').max(Number.MAX_SAFE_INTEGER),
   discount,
   status: z.enum(['draft', 'active', 'archived']),
 });
@@ -35,7 +35,7 @@ export const productSchema = z.object({
 export const productUpdateSchema = productSchema.partial();
 export const categorySchema = z.object({
   name: z.string().trim().min(1).max(120),
-  slug,
+  slug: slug.optional(),
   description: z.string().trim().max(1000).default(''),
   status: z.enum(['active', 'archived']).default('active'),
   sortOrder: z.number().int().nonnegative(),
