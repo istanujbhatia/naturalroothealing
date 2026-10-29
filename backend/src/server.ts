@@ -12,7 +12,7 @@ async function start() {
 
   const app = createApp(config);
   const reservationSweeper = setInterval(() => { void expirePendingReservations().catch((error: unknown) => logger.error({ err: error }, 'Payment reservation sweep failed')); }, 60_000);
-  const server = app.listen(config.port, () => {
+  const server = app.listen(config.port, '0.0.0.0', () => {
     logger.info({ port: config.port }, 'API server started');
   });
 
