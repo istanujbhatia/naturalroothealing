@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from './api';
 
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:4000`}/api/v1`;
+const fetch = apiFetch;
 const csrf = () => decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('nrh_csrf='))?.split('=').slice(1).join('=') || '');
 const slugifyName = (value) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'product';
 const blankProduct = { name: '', slug: '', description: '', details: '', ingredients: '', size: '', categoryId: '', imagesText: '', currency: 'USD', listPriceMinor: 100, discount: 0, status: 'draft' };

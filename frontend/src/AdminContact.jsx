@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from './api';
 import { Mail, Trash2 } from 'lucide-react';
 
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:4000`}/api/v1`;
+const fetch = apiFetch;
 const csrf = () => decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('nrh_csrf='))?.split('=').slice(1).join('=') || '');
 const formatDate = (value) => value ? new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : 'Not available';
 const topicLabel = { product_question: 'Product question', order_support: 'Order support', something_else: 'Something else' };

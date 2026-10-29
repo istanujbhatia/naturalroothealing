@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, LogOut, Moon, Sun, UserRound } from 'lucide-react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { apiFetch } from './api';
 
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:4000`}/api/v1`;
+const fetch = apiFetch;
 const csrf = () => decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('nrh_csrf='))?.split('=').slice(1).join('=') || '');
 
 export default function AdminNav() {

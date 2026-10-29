@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from './api';
 import { Check, Copy, ImagePlus } from 'lucide-react';
 
 const API_BASE = `${import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:4000`}/api/v1`;
+const fetch = apiFetch;
 const csrf = () => decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('nrh_csrf='))?.split('=').slice(1).join('=') || '');
 const readableError = (error) => { const message = error instanceof Error ? error.message : ''; return !message || /unexpected|internal server/i.test(message) ? 'The image could not be processed. Please try again.' : message; };
 

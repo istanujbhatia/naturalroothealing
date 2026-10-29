@@ -14,12 +14,14 @@ import AdminContact from './AdminContact.jsx';
 import AdminNewsletter from './AdminNewsletter.jsx';
 import AdminReviews from './AdminReviews.jsx';
 import AdminNav from './AdminNav.jsx';
+import { apiFetch } from './api';
 
 const ASSET = `${import.meta.env.BASE_URL}assets/`;
 const siteImageOverrides = {};
 const image = (name) => siteImageOverrides[name] || `${ASSET}${name}`;
 const API_HOST = import.meta.env.VITE_API_BASE_URL || `${window.location.protocol}//${window.location.hostname}:4000`;
 const API_BASE = `${API_HOST}/api/v1`;
+const fetch = apiFetch;
 const csrf = () => decodeURIComponent(document.cookie.split('; ').find((item) => item.startsWith('nrh_csrf='))?.split('=').slice(1).join('=') || '');
 
 const products = [
