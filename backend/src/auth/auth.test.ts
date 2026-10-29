@@ -175,6 +175,12 @@ describe('customer authentication', () => {
       password: 'a-secure-password',
       role: 'admin',
     }).success).toBe(false);
+    expect(registerSchema.safeParse({
+      name: 'Customer',
+      email: 'customer@example.com',
+      password: 'a-secure-password',
+      phone: '',
+    }).success).toBe(true);
   });
 
   it('rejects expired sessions and revokes active sessions on logout', async () => {

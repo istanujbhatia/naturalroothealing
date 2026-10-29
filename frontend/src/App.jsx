@@ -704,7 +704,7 @@ function Account() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(isRegistering
-          ? form
+            ? { ...form, ...(form.phone.trim() ? {} : { phone: undefined }) }
           : { email: form.email, password: form.password }),
       });
       const payload = await response.json().catch(() => ({}));

@@ -7,7 +7,7 @@ export const registerSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email,
   password,
-  phone: z.string().trim().min(3).max(40).optional(),
+  phone: z.preprocess((value) => value === '' ? undefined : value, z.string().trim().min(3).max(40).optional()),
 }).strict();
 
 export const loginSchema = z.object({
