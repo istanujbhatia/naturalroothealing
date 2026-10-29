@@ -52,6 +52,16 @@ export function createAdminRouter(config: AppConfig): Router {
     }
   });
 
+  router.get('/auth/csrf', async (req, res, next) => {
+    try {
+      const token = parseCookies(req.header('cookie'))[config.csrfCookieName];
+      if (!token) throw new AppError(403, 'CSRF_TOKEN_REQUIRED', 'CSRF token required');
+      res.json({ data: { csrfToken: token } });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/auth/logout', requireCsrf, async (req, res, next) => {
     try {
       await revokeSession(req.auth!.sessionToken, sessionRepository);
