@@ -22,6 +22,8 @@ import { createNewsletterRouter } from './routes/newsletter.js';
 import { createAdminContactRouter } from './routes/admin-contact.js';
 import { createReviewsRouter } from './routes/reviews.js';
 import { createAdminReviewsRouter } from './routes/admin-reviews.js';
+import { createArticlesRouter } from './routes/articles.js';
+import { createAdminArticlesRouter } from './routes/admin-articles.js';
 import { createPaymentsRouter } from './routes/payments.js';
 import { createPaymentWebhooksRouter } from './routes/payment-webhooks.js';
 
@@ -56,6 +58,7 @@ export function createApp(config: AppConfig) {
       });
     },
   }));
+  app.get('/', (_req, res) => res.json({ data: { service: 'Natural Root Healing API', status: 'ok', health: '/api/v1/health' } }));
   app.use('/api/v1/health', healthRouter);
   app.use('/api/v1/auth', createAuthRouter(config));
   app.use('/api/v1/account', createAccountRouter(config));
@@ -71,6 +74,8 @@ export function createApp(config: AppConfig) {
   app.use('/api/v1/admin/users', createAdminUsersRouter(config));
   app.use('/api/v1/admin/contact', createAdminContactRouter(config));
   app.use('/api/v1/catalog/products', createReviewsRouter(config));
+  app.use('/api/v1/articles', createArticlesRouter());
+  app.use('/api/v1/admin/articles', createAdminArticlesRouter(config));
   app.use('/api/v1/catalog', catalogRouter);
   app.use('/api/v1/admin/reviews', createAdminReviewsRouter(config));
   app.use(notFoundHandler);

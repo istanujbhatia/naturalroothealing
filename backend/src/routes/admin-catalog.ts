@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Types } from 'mongoose';
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { AppConfig } from '../config.js';
@@ -17,7 +17,8 @@ import { parsePagination } from '../catalog/query.js';
 import { categorySchema, categoryUpdateSchema, imageUploadSchema, inventoryAdjustmentSchema, productSchema, productUpdateSchema, siteImageUpdateSchema } from '../catalog/schemas.js';
 import { slugifyProductName } from '../catalog/slug.js';
 import { StoreSettingsModel } from '../catalog/models/store-settings.js';
-import { resolvedSiteImages } from '../catalog/site-images.js';
+import { ArticleModel } from '../content/model.js';
+import { resolvedSiteImages, SITE_IMAGE_DEFINITIONS } from '../catalog/site-images.js';
 
 export function createAdminCatalogRouter(config: AppConfig): Router {
   const router = Router();
@@ -63,8 +64,32 @@ export function createAdminCatalogRouter(config: AppConfig): Router {
       const root = path.resolve(process.cwd(), config.assetUploadDir || '../frontend/public/assets');
       let entries;
       try { entries = await readdir(root, { withFileTypes: true }); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') { res.json({ data: { assets: [] } }); return; } throw error; }
-      const assets = (await Promise.all(entries.filter((entry) => entry.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(entry.name)).map(async (entry) => ({ filename: entry.name, path: `/assets/${entry.name}`, size: (await stat(path.join(root, entry.name))).size })))).sort((first, second) => first.filename.localeCompare(second.filename));
+      const assets = (await Promise.all(entries.filter((entry) => entry.isFile() && /\.(png|jpe?g|webp|gif)$/i.test(entry.name)).map(async (entry) => { const details = await stat(path.join(root, entry.name)); return { filename: entry.name, path: `/assets/${entry.name}`, size: details.size, uploadedAt: details.mtime.toISOString() }; }))).sort((first, second) => new Date(second.uploadedAt).getTime() - new Date(first.uploadedAt).getTime());
       res.json({ data: { assets } });
+    } catch (error) { next(error); }
+  });
+
+  router.delete('/assets/:filename', requireCsrf, async (req, res, next) => {
+    try {
+      const filename = String(req.params.filename ?? '');
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:png|jpe?g|webp|gif)$/i.test(filename)) throw new AppError(400, 'INVALID_ASSET_NAME', 'That image asset name is not valid');
+      const root = path.resolve(process.cwd(), config.assetUploadDir || '../frontend/public/assets');
+      const target = path.resolve(root, filename);
+      const relative = path.relative(root, target);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new AppError(400, 'INVALID_ASSET_NAME', 'That image asset name is not valid');
+      const assetPath = `/assets/${filename}`;
+      const [productUse, articleUse, settings] = await Promise.all([
+        ProductModel.exists({ 'images.reference': assetPath }),
+        ArticleModel.exists({ image: assetPath }),
+        StoreSettingsModel.findOne({ key: 'default' }).lean(),
+      ]);
+      const siteUse = SITE_IMAGE_DEFINITIONS.some((image) => image.defaultReference === assetPath) || Boolean(settings?.siteImages?.some((image) => image.reference === assetPath));
+      if (productUse || articleUse || siteUse) throw new AppError(409, 'ASSET_IN_USE', 'This image is still used by the site and cannot be deleted');
+      let before;
+      try { before = await stat(target); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new AppError(404, 'ASSET_NOT_FOUND', 'Image asset not found'); throw error; }
+      await unlink(target);
+      await recordAudit({ actorUserId: req.auth!.userId, action: 'asset.deleted', entityType: 'ProductAsset', entityId: filename, requestId: String(req.id), changes: { before: { path: assetPath, size: before.size } } });
+      res.status(204).send();
     } catch (error) { next(error); }
   });
 
@@ -79,13 +104,13 @@ export function createAdminCatalogRouter(config: AppConfig): Router {
     try {
       const current = await StoreSettingsModel.findOne({ key: 'default' }).lean();
       const before = resolvedSiteImages(current?.siteImages || []);
-      const nextImages = before.map((image) => image.key === req.body.key ? { key: image.key, reference: req.body.reference } : { key: image.key, reference: image.reference });
+      const nextImages = before.map((image) => image.key === req.body.key ? { key: image.key, reference: req.body.reference, altText: req.body.altText } : { key: image.key, reference: image.reference, altText: image.altText });
       const updated = await StoreSettingsModel.findOneAndUpdate(
         { key: 'default' },
         { $set: { siteImages: nextImages }, $setOnInsert: { storeName: 'Natural Root Healing', catalogCurrency: 'USD', shippingMinor: 0, taxRatePercentage: 0 } },
         { new: true, upsert: true, runValidators: true },
       ).lean();
-      await recordAudit({ actorUserId: req.auth!.userId, action: 'site_image.updated', entityType: 'StoreSettings', entityId: 'default', requestId: String(req.id), changes: { before: { key: req.body.key, reference: before.find((image) => image.key === req.body.key)?.reference }, after: { key: req.body.key, reference: req.body.reference } } });
+      await recordAudit({ actorUserId: req.auth!.userId, action: 'site_image.updated', entityType: 'StoreSettings', entityId: 'default', requestId: String(req.id), changes: { before: { key: req.body.key, reference: before.find((image) => image.key === req.body.key)?.reference }, after: { key: req.body.key, reference: req.body.reference, altText: req.body.altText } } });
       res.json({ data: { images: resolvedSiteImages(updated?.siteImages || []) } });
     } catch (error) { next(error); }
   });

@@ -14,6 +14,7 @@ export const imageUploadSchema = z.object({
 export const siteImageUpdateSchema = z.object({
   key: z.enum(SITE_IMAGE_KEYS as [string, ...string[]]),
   reference: z.string().trim().regex(/^(\/assets\/|https:\/\/)[^\s]+$/),
+  altText: z.string().trim().min(1).max(240),
 });
 const discount = z.object({ type: z.literal('percentage'), value: z.number().int().min(0).max(100) });
 

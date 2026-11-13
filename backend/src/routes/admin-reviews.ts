@@ -35,7 +35,7 @@ export function createAdminReviewsRouter(config: AppConfig): Router {
     try {
       const product = await ProductModel.findOne({ _id: req.body.productId, status: 'active' }).select('_id').lean();
       if (!product) throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Select an active product');
-      if (req.body.isStrip && await ReviewModel.countDocuments({ status: 'published', isStrip: true }) >= 20) throw new AppError(409, 'REVIEW_STRIP_LIMIT_REACHED', 'The home review strip already has 20 reviews. Remove one before adding another.');
+      if (req.body.isStrip && await ReviewModel.countDocuments({ status: 'published', isStrip: true, isDoctor: req.body.isDoctor === true }) >= 20) throw new AppError(409, 'REVIEW_STRIP_LIMIT_REACHED', 'This review strip already has 20 reviews. Remove one before adding another.');
       const review = await ReviewModel.create({ ...req.body, productId: product._id, source: 'customer_customer' });
       await recordAudit({ actorUserId: req.auth!.userId, action: 'review.demo_created', entityType: 'Review', entityId: String(review._id), requestId: String(req.id), changes: { after: { productId: String(product._id), authorName: review.authorName, status: review.status, isFeatured: review.isFeatured } } });
       const populated = await ReviewModel.findById(review._id).populate('productId', 'name slug').lean();
@@ -53,8 +53,8 @@ export function createAdminReviewsRouter(config: AppConfig): Router {
       if (req.body.isFeatured !== undefined) changes.isFeatured = req.body.isFeatured;
       if (req.body.isStrip !== undefined) {
         if (req.body.isStrip) {
-          const stripCount = await ReviewModel.countDocuments({ status: 'published', isStrip: true, _id: { $ne: reviewId } });
-          if (stripCount >= 20) throw new AppError(409, 'REVIEW_STRIP_LIMIT_REACHED', 'The home review strip already has 20 reviews. Remove one before adding another.');
+          const stripCount = await ReviewModel.countDocuments({ status: 'published', isStrip: true, isDoctor: before.isDoctor === true, _id: { $ne: reviewId } });
+          if (stripCount >= 20) throw new AppError(409, 'REVIEW_STRIP_LIMIT_REACHED', 'This review strip already has 20 reviews. Remove one before adding another.');
           changes.isStrip = true;
           changes.status = 'published';
         } else changes.isStrip = false;
@@ -81,4 +81,4 @@ export function createAdminReviewsRouter(config: AppConfig): Router {
   return router;
 }
 
-function toAdminReview(review: any) { return { id: String(review._id), rating: review.rating, title: review.title, body: review.body, status: review.status, isFeatured: review.isFeatured, isStrip: review.isStrip, source: review.source, authorName: review.authorName || null, createdAt: review.createdAt, product: review.productId ? { id: String(review.productId._id), name: review.productId.name, slug: review.productId.slug } : null, user: review.userId ? { id: String(review.userId._id), name: review.userId.name, email: review.userId.email } : null }; }
+function toAdminReview(review: any) { return { id: String(review._id), rating: review.rating, title: review.title, body: review.body, status: review.status, isFeatured: review.isFeatured, isStrip: review.isStrip, isDoctor: review.isDoctor === true, source: review.source, authorName: review.authorName || null, createdAt: review.createdAt, product: review.productId ? { id: String(review.productId._id), name: review.productId.name, slug: review.productId.slug } : null, user: review.userId ? { id: String(review.userId._id), name: review.userId.name, email: review.userId.email } : null }; }

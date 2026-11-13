@@ -10,10 +10,11 @@ async function seedReviewStrip() {
   await connectDatabase(config.mongodbUri, logger);
   try {
     const activeProducts = await ProductModel.find({ status: 'active' }).select('_id').lean();
-    await ReviewModel.updateMany({}, { $set: { isStrip: false } });
-    const reviews = await ReviewModel.find({ status: 'published', productId: { $in: activeProducts.map((product) => product._id) } }).sort({ createdAt: -1 }).limit(3).select('_id title').lean();
+    await ReviewModel.updateMany({ isDoctor: { $exists: false } }, { $set: { isDoctor: false } });
+    await ReviewModel.updateMany({ isDoctor: false }, { $set: { isStrip: false } });
+    const reviews = await ReviewModel.find({ status: 'published', isDoctor: { $ne: true }, productId: { $in: activeProducts.map((product) => product._id) } }).sort({ createdAt: -1 }).limit(3).select('_id title').lean();
     for (const review of reviews) await ReviewModel.updateOne({ _id: review._id }, { $set: { isStrip: true } });
-    logger.info({ reviews }, 'Review strip sample selection completed');
+    logger.info({ reviews }, 'Customer review strip sample selection completed');
   } finally {
     await disconnectDatabase(logger);
   }

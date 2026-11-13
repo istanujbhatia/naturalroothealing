@@ -22,4 +22,5 @@ export const reviewAdminCreateSchema = z.object({
   status: z.enum(['pending', 'published', 'rejected']).default('published'),
   isFeatured: z.boolean().default(true),
   isStrip: z.boolean().default(false),
+  isDoctor: z.boolean().default(false),
 });

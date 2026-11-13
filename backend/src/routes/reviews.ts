@@ -13,7 +13,14 @@ export function createReviewsRouter(config: AppConfig): Router {
 
   router.get('/strip', async (_req, res, next) => {
     try {
-      const reviews = await ReviewModel.find({ status: 'published', isStrip: true }).populate({ path: 'productId', select: 'name slug', match: { status: 'active' } }).populate('userId', 'name').sort({ createdAt: -1 }).limit(20).lean();
+      const reviews = await ReviewModel.find({ status: 'published', isStrip: true, isDoctor: false }).populate({ path: 'productId', select: 'name slug', match: { status: 'active' } }).populate('userId', 'name').sort({ createdAt: -1 }).limit(20).lean();
+      res.json({ data: { reviews: reviews.filter((review: any) => review.productId).map(toStripReview) } });
+    } catch (error) { next(error); }
+  });
+
+  router.get('/doctor-strip', async (_req, res, next) => {
+    try {
+      const reviews = await ReviewModel.find({ status: 'published', isStrip: true, isDoctor: true }).populate({ path: 'productId', select: 'name slug', match: { status: 'active' } }).sort({ createdAt: -1 }).limit(20).lean();
       res.json({ data: { reviews: reviews.filter((review: any) => review.productId).map(toStripReview) } });
     } catch (error) { next(error); }
   });
@@ -22,7 +29,16 @@ export function createReviewsRouter(config: AppConfig): Router {
     try {
       const product = await ProductModel.findOne({ slug: req.params.slug, status: 'active' }).select('_id').lean();
       if (!product) throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
-      const reviews = await ReviewModel.find({ productId: product._id, status: 'published', isFeatured: true }).populate('userId', 'name').sort({ createdAt: -1 }).lean();
+      const reviews = await ReviewModel.find({ productId: product._id, status: 'published', isFeatured: true, isDoctor: false }).populate('userId', 'name').sort({ createdAt: -1 }).lean();
+      res.json({ data: { reviews: reviews.map(toPublicReview) } });
+    } catch (error) { next(error); }
+  });
+
+  router.get('/:slug/doctor-reviews', async (req, res, next) => {
+    try {
+      const product = await ProductModel.findOne({ slug: req.params.slug, status: 'active' }).select('_id').lean();
+      if (!product) throw new AppError(404, 'PRODUCT_NOT_FOUND', 'Product not found');
+      const reviews = await ReviewModel.find({ productId: product._id, status: 'published', isFeatured: true, isDoctor: true }).sort({ createdAt: -1 }).lean();
       res.json({ data: { reviews: reviews.map(toPublicReview) } });
     } catch (error) { next(error); }
   });

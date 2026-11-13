@@ -5,6 +5,7 @@ import { calculateFinalPriceMinor } from '../catalog/price.js';
 import { parsePagination } from '../catalog/query.js';
 import { StoreSettingsModel } from '../catalog/models/store-settings.js';
 import { resolvedSiteImages } from '../catalog/site-images.js';
+import { ReviewModel } from '../review/model.js';
 
 export const catalogRouter = Router();
 
@@ -34,6 +35,23 @@ catalogRouter.get('/products', async (req, res, next) => {
       ProductModel.countDocuments(filter),
     ]);
     res.json({ data: { products: products.map(toPublicProduct), pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+  } catch (error) { next(error); }
+});
+
+catalogRouter.get('/products/review-summaries', async (_req, res, next) => {
+  try {
+    const summaries = await ReviewModel.aggregate([
+      { $match: { status: 'published', isDoctor: false } },
+      { $group: { _id: '$productId', averageRating: { $avg: '$rating' }, reviewCount: { $sum: 1 } } },
+    ]);
+    const data: Record<string, { averageRating: number; reviewCount: number }> = {};
+    for (const summary of summaries) {
+      data[String(summary._id)] = {
+        averageRating: Math.round(summary.averageRating * 10) / 10,
+        reviewCount: summary.reviewCount,
+      };
+    }
+    res.json({ data: { summaries: data } });
   } catch (error) { next(error); }
 });
 

@@ -17,6 +17,11 @@ export const notFoundHandler: RequestHandler = (req, _res, next) => {
 
 export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   const logger = req.log;
+  if (error?.type === 'entity.too.large' || error?.status === 413) {
+    logger.warn({ requestId: req.id }, 'Request body too large');
+    res.status(413).json({ error: { code: 'UPLOAD_TOO_LARGE', message: 'Image upload is too large. Choose an image under 5 MB.', requestId: req.id } });
+    return;
+  }
   const isAppError = error instanceof AppError;
   const statusCode = isAppError ? error.statusCode : 500;
   const code = isAppError ? error.code : 'INTERNAL_SERVER_ERROR';

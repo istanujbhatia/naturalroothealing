@@ -5,6 +5,7 @@ const reviewSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: false, index: true },
   authorName: { type: String, trim: true, maxlength: 120 },
   source: { type: String, enum: ['customer', 'customer_customer'], default: 'customer', index: true },
+  isDoctor: { type: Boolean, default: false, index: true },
   rating: { type: Number, required: true, min: 1, max: 5, validate: { validator: Number.isInteger } },
   title: { type: String, required: true, trim: true, minlength: 1, maxlength: 120 },
   body: { type: String, required: true, trim: true, minlength: 1, maxlength: 2000 },
